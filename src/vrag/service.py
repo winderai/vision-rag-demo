@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 @dataclass
 class PDFIndexingServiceConfig:
     document_store: DocumentStore
-    vision_api_key: str
-    vision_base_url: str
-    vision_embeddings_model: str
+    embedding_api_key: str
+    embedding_base_url: str
+    embedding_model: str
     embedding_dimension: int
 
 
@@ -38,9 +38,9 @@ class IndexingService:
 
         components = {
             "embedder": MultimodalTextEmbedder(
-                api_key=self.config.vision_api_key,
-                api_base_url=self.config.vision_base_url,
-                model=self.config.vision_embeddings_model,
+                api_key=self.config.embedding_api_key,
+                api_base_url=self.config.embedding_base_url,
+                model=self.config.embedding_model,
             ),
             "vector_retriever": PgvectorEmbeddingRetriever(
                 document_store=self.config.document_store
@@ -64,9 +64,9 @@ class IndexingService:
             "converter": PDFToImagesConverter(),
             "splitter": ImageSplitter(),
             "embedder": MultimodalDocumentEmbedder(
-                api_key=self.config.vision_api_key,
-                api_base_url=self.config.vision_base_url,
-                model=self.config.vision_embeddings_model,
+                api_key=self.config.embedding_api_key,
+                api_base_url=self.config.embedding_base_url,
+                model=self.config.embedding_model,
             ),
             "vector_writer": DocumentWriter(
                 document_store=self.config.document_store,

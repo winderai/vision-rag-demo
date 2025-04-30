@@ -16,11 +16,6 @@ os.environ.update(env_vars)
 
 @click.group(context_settings=dict(auto_envvar_prefix="VRAG", show_default=True))
 @click.pass_context
-@click.option("--vision-api-key", type=str, default="")
-@click.option("--vision-base-url", type=str, default="http://localhost:8000/v1")
-@click.option(
-    "--vision-embeddings-model", type=str, default="MrLight/dse-qwen2-2b-mrl-v1"
-)
 @click.option("--embedding-dimension", type=int, default=1536)
 @click.option(
     "--db-connection-string",
@@ -29,26 +24,26 @@ os.environ.update(env_vars)
 )
 def cli(
     ctx: click.Context,
-    vision_api_key: str,
-    vision_base_url: str,
-    vision_embeddings_model: str,
     embedding_dimension: int,
     db_connection_string: str,
 ):
     ctx.ensure_object(dict)
-    ctx.obj["vision_api_key"] = vision_api_key
-    ctx.obj["vision_base_url"] = vision_base_url
-    ctx.obj["vision_embeddings_model"] = vision_embeddings_model
     ctx.obj["embedding_dimension"] = embedding_dimension
     ctx.obj["db_connection_string"] = db_connection_string
 
 
-@cli.command()
+@cli.command(help="Index a PDF file")
 @click.pass_context
 @click.argument("file", type=click.Path(exists=True))
+@click.option("--embedding-api-key", type=str, default="")
+@click.option("--embedding-base-url", type=str, default="http://localhost:8000/v1")
+@click.option("--embedding-model", type=str, default="MrLight/dse-qwen2-2b-mrl-v1")
 def index(
     ctx: click.Context,
     file: str,
+    embedding_api_key: str,
+    embedding_base_url: str,
+    embedding_model: str,
 ):
     document_store = PgvectorDocumentStore(
         connection_string=Secret.from_token(ctx.obj["db_connection_string"]),
@@ -61,21 +56,27 @@ def index(
 
     config = PDFIndexingServiceConfig(
         document_store=document_store,
-        vision_api_key=ctx.obj["vision_api_key"],
-        vision_base_url=ctx.obj["vision_base_url"],
-        vision_embeddings_model=ctx.obj["vision_embeddings_model"],
+        embedding_api_key=embedding_api_key,
+        embedding_base_url=embedding_base_url,
+        embedding_model=embedding_model,
         embedding_dimension=ctx.obj["embedding_dimension"],
     )
     indexer = IndexingService(config)
     indexer.index_pdf(file)
 
 
-@cli.command()
+@cli.command(help="Query the vector database for results")
 @click.pass_context
 @click.argument("query", type=str)
+@click.option("--embedding-api-key", type=str, default="")
+@click.option("--embedding-base-url", type=str, default="http://localhost:8000/v1")
+@click.option("--embedding-model", type=str, default="MrLight/dse-qwen2-2b-mrl-v1")
 def query(
     ctx: click.Context,
     query: str,
+    embedding_api_key: str,
+    embedding_base_url: str,
+    embedding_model: str,
 ):
     document_store = PgvectorDocumentStore(
         connection_string=Secret.from_token(ctx.obj["db_connection_string"]),
@@ -88,35 +89,41 @@ def query(
 
     config = PDFIndexingServiceConfig(
         document_store=document_store,
-        vision_api_key=ctx.obj["vision_api_key"],
-        vision_base_url=ctx.obj["vision_base_url"],
-        vision_embeddings_model=ctx.obj["vision_embeddings_model"],
+        embedding_api_key=embedding_api_key,
+        embedding_base_url=embedding_base_url,
+        embedding_model=embedding_model,
         embedding_dimension=ctx.obj["embedding_dimension"],
     )
     indexer = IndexingService(config)
     print(json.dumps(indexer.query(query), indent=2))
 
 
-@cli.command()
+@cli.command(help="Chat with the vector database")
 @click.pass_context
 @click.argument("query", type=str)
 @click.option(
-    "--model", type=str, default="Qwen/Qwen2.5-VL-3B-Instruct"
+    "--chat-model", type=str, default="Qwen/Qwen2.5-VL-3B-Instruct"
 )  # Also works with gpt-4o-mini
 @click.option(
-    "--base-url", type=str, default="http://localhost:8001/v1"
+    "--chat-base-url", type=str, default="http://localhost:8001/v1"
 )  # Also works with https://api.openai.com/v1
-@click.option("--api-key", type=str, default="")
+@click.option("--chat-api-key", type=str, default="vllm-requires-dummy-token")
+@click.option("--embedding-api-key", type=str, default="vllm-requires-dummy-token")
+@click.option("--embedding-base-url", type=str, default="http://localhost:8000/v1")
+@click.option("--embedding-model", type=str, default="MrLight/dse-qwen2-2b-mrl-v1")
 def chat(
     ctx: click.Context,
     query: str,
-    model: str,
-    base_url: str,
-    api_key: str,
+    chat_model: str,
+    chat_base_url: str,
+    chat_api_key: str,
+    embedding_api_key: str,
+    embedding_base_url: str,
+    embedding_model: str,
 ):
     client = OpenAI(
-        base_url=base_url,
-        api_key=api_key,
+        base_url=chat_base_url,
+        api_key=chat_api_key,
     )
 
     document_store = PgvectorDocumentStore(
@@ -130,9 +137,9 @@ def chat(
 
     config = PDFIndexingServiceConfig(
         document_store=document_store,
-        vision_api_key=ctx.obj["vision_api_key"],
-        vision_base_url=ctx.obj["vision_base_url"],
-        vision_embeddings_model=ctx.obj["vision_embeddings_model"],
+        embedding_api_key=embedding_api_key,
+        embedding_base_url=embedding_base_url,
+        embedding_model=embedding_model,
         embedding_dimension=ctx.obj["embedding_dimension"],
     )
     indexer = IndexingService(config)
@@ -154,15 +161,15 @@ def chat(
 
     # Check model exists
     models = client.models.list()
-    if model not in [m.id for m in models]:
-        raise click.UsageError(f"Model {model} does not exist")
+    if chat_model not in [m.id for m in models]:
+        raise click.UsageError(f"Model {chat_model} does not exist")
 
     completion = client.chat.completions.create(
-        model=model,
+        model=chat_model,
         messages=[
             {
                 "role": "system",
-                "content": "You are a helpful assistant that can answer questions about the provided images.",
+                "content": "You are a helpful assistant that has the ability to answer questions about images.",
             },
             {
                 "role": "user",
@@ -175,22 +182,3 @@ def chat(
     )
 
     print(completion.choices[0].message.content)
-
-    # response = client.chat.completions.create(
-    #     messages=[
-    #         {
-    #             "role": "system",
-    #             "content": "You are a helpful assistant that can answer questions about the provided images.",
-    #         },
-    #         {
-    #             "role": "user",
-    #             "content": [
-    #                 {"type": "input_text", "text": query},
-    #                 *image_content,
-    #             ],
-    #         },
-    #     ],
-    #     model=model,
-    # )
-
-    # print(response.output_text)
